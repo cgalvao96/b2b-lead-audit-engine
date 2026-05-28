@@ -1,60 +1,109 @@
 import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import google.genai as genai
+from google.genai import types
 import pandas as pd
-from urllib.parse import urljoin, urlparse
-import time
-st.set_page_config(page_title="B2B Lead Engine", layout="centered")
-st.title("B2B Lead & SEO Audit Engine")
-target_url = st.text_input("Enter business website URL:")
-max_links_to_check = st.slider("Max internal links to audit:", 5, 50, 20)
-def audit_website(base_url, max_links):
-    found_links = set()
-    audited_results = []
-    marketing_tags = {"Meta/FB Pixel": ["connect.facebook.net", "fbpixel"], "Google Analytics": ["googletagmanager.com", "google-analytics.com"], "TikTok Pixel": ["://tiktok.com"]}
-    detected_marketing = {k: False for k in marketing_tags}
+import json
+
+# Page configurations
+st.set_page_config(
+    page_title="B2B Lead & SEO Audit Engine",
+    page_icon="🎯",
+    layout="wide"
+)
+
+# Application Header
+st.title("🎯 B2B Lead & SEO Audit Engine")
+st.subheader("Micro-SaaS Prototype: Automated Data Aggregation & Compliance")
+
+# Sidebar Configuration
+with st.sidebar:
+    st.header("⚙️ API Configuration")
+    api_key = st.text_input("Enter Gemini API Key:", type="password")
+    st.markdown("---")
+    st.markdown("### 💰 Asset Valuation Data")
+    st.metric(label="Target Acquisition Value", value="$1,200")
+    st.markdown("**Target Audience:** Agencies, B2B Growth Teams")
+    st.markdown("**Engine State:** Stateless / Cloud-Ready")
+
+# Helper function for Gemini audit generation
+def generate_audit_report(target_site, business_type, api_key):
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(base_url, headers=headers, timeout=10)
-        html_content = res.text
-        soup = BeautifulSoup(html_content, "html.parser")
-        for name, footprints in marketing_tags.items():
-            if any(f in html_content.lower() for f in footprints):
-                detected_marketing[name] = True
-        domain = urlparse(base_url).netloc
-        for anchor in soup.find_all("a", href=True):
-            href = anchor["href"]
-            absolute_url = urljoin(base_url, href)
-            if urlparse(absolute_url).netloc == domain and absolute_url not in found_links:
-                found_links.add(absolute_url)
+        client = genai.Client(api_key=api_key)
+        
+        system_instruction = (
+            "You are an expert B2B growth engineer and technical SEO auditor. "
+            "Analyze the target site and business type. Identify critical SEO deficiencies and lead acquisition opportunities. "
+            "You MUST reply ONLY with a valid JSON object containing two main keys: 'seo_deficiencies' (array of objects) and 'lead_strategies' (array of objects). "
+            "Do not include markdown code blocks or wrapping. "
+            "SEO objects must contain keys: 'issue', 'impact', 'fix'. "
+            "Lead strategy objects must contain keys: 'strategy', 'target_persona', 'expected_roi'."
+        )
+        
+        prompt = f"Run a diagnostic audit for business type: {business_type} targeting domain: {target_site}"
+        
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.2,
+                response_mime_type="application/json"
+            )
+        )
+        return response.text
     except Exception as e:
-        st.error(f"Error: {str(e)}")
-        return None, None
-    progress_bar = st.progress(0)
-    links_list = list(found_links)
-    for idx, link in enumerate(links_list):
-        time.sleep(0.1)
-        try:
-            status_check = requests.head(link, headers=headers, timeout=5, allow_redirects=True)
-            status_code = status_check.status_code
-        except: status_code = "Failed"
-        status_msg = "?? Functional (200)" if status_code == 200 else f"?? Broken ({status_code})"
-        audited_results.append({"Page URL": link, "Status": status_msg})
-        progress_bar.progress((idx + 1) / len(links_list))
-    return audited_results, detected_marketing
-if st.button("Run Audit Strategy", type="primary"):
-    if not target_url: st.warning("Please enter a URL.")
-    else:
-        if not target_url.startswith("http"): target_url = "https://" + target_url
-        with st.spinner("Analyzing code infrastructure..."):
-            audit_report, marketing_report = audit_website(target_url, max_links_to_check)
-            if audit_report:
-                st.success("Audit Completed!")
-                st.subheader("?? Marketing Tech Fingerprint")
-                for pixel, status in marketing_report.items():
-                    if status: st.write(f"? **{pixel}:** Installed")
-                    else: st.write(f"?? **{pixel}:** **MISSING** (High-Value Pitch Angle!)")
-                st.subheader("?? Crawled Link Health")
-                df = pd.DataFrame(audit_report)
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                st.download_button(label="?? Download Lead Audit Sheet (.CSV)", data=df.to_csv(index=False), file_name="website_lead_audit.csv", mime="text/csv")
+        st.error(f"Gemini API Error: {str(e)}")
+        return None
+
+# Main UI Layout
+st.markdown("### 1. Configuration Workspace")
+col1, col2 = st.columns(2)
+with col1:
+    target_domain = st.text_input("Target Domain:", placeholder="e.g., localdentalclinic.com")
+with col2:
+    biz_type = st.text_input("Business Category:", placeholder="e.g., Medical / Dental Practice")
+
+# Conditional logic: Show Sandbox data if inputs are empty
+if not target_domain or not biz_type:
+    st.info("💡 Prototyping Mode: Displaying built-in sandbox mock data below. Fill in the fields above to run a custom analysis.")
+    st.markdown("---")
+    st.markdown("### 2. Strategic Audit & Lead Intelligence (Sandbox View)")
+    
+    st.markdown("#### 🔍 Technical SEO Deficiencies")
+    mock_seo = pd.DataFrame([
+        {"issue": "Missing Schema.org Structured Data Markup", "impact": "High - Prevents rich snippets in search results", "fix": "Inject localized dental practice JSON-LD schema into the homepage header."},
+        {"issue": "Unoptimized Core Web Vitals (LCP > 3.4s)", "impact": "Medium - De-prioritizes mobile ranking metrics", "fix": "Compress next-gen image assets and defer non-critical render-blocking JS."}
+    ])
+    st.dataframe(mock_seo, use_container_width=True)
+    
+    st.markdown("#### 📈 High-Conversion Lead Capture Strategies")
+    mock_leads = pd.DataFrame([
+        {"strategy": "Hyper-local B2B Partner Outreach Campaign", "target_persona": "Local Corporate HR Managers", "expected_roi": "Estimated 4.5x via corporate dental benefits packages"},
+        {"strategy": "Intent-Based Lead Magnet Conversion Funnel", "target_persona": "High-intent local patients searching emergency care", "expected_roi": "Estimated 22% lift in direct appointment bookings"}
+    ])
+    st.dataframe(mock_leads, use_container_width=True)
+else:
+    st.markdown("---")
+    st.markdown("### 2. Strategic Audit & Lead Intelligence (Live Engine)")
+    if st.button("⚡ Run Live Engine Diagnostic"):
+        if not api_key:
+            st.warning("Please enter your Gemini API key in the sidebar to execute a live context audit computation.")
+        else:
+            with st.spinner("Compiling contextual data fields via Gemini 2.5-Flash..."):
+                raw_json = generate_audit_report(target_domain, biz_type, api_key)
+                
+                if raw_json:
+                    try:
+                        clean_json = raw_json.strip().strip("```json").strip("```")
+                        data = json.loads(clean_json)
+                        
+                        st.success("🎉 Comprehensive Lead & SEO Diagnostic Complete!")
+                        
+                        st.markdown("#### 🔍 Technical SEO Deficiencies")
+                        st.dataframe(pd.DataFrame(data.get('seo_deficiencies', [])), use_container_width=True)
+                        
+                        st.markdown("#### 📈 High-Conversion Lead Capture Strategies")
+                        st.dataframe(pd.DataFrame(data.get('lead_strategies', [])), use_container_width=True)
+                        
+                    except Exception as e:
+                        st.error("Failed to cleanly parse structured engine response. Please re-trigger the diagnostic.")
